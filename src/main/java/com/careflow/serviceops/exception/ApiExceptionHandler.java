@@ -5,6 +5,8 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.net.URI;
 import java.util.LinkedHashMap;
@@ -44,6 +46,35 @@ public class ApiExceptionHandler {
         problem.setTitle(title);
         problem.setType(URI.create("https://careflow.local/problems/" + type));
         return problem;
+    }
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail handleMalformedRequest(HttpMessageNotReadableException exception) {
+
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                "Invalid request",
+                "Malformed JSON or invalid request value.",
+                "invalid-request"
+        );
+    }
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException exception) {
+
+        String detail;
+
+        if ("id".equals(exception.getName())) {
+            detail = "Invalid UUID: " + exception.getValue();
+        } else {
+            detail = "Invalid value '" + exception.getValue() +
+                    "' for parameter '" + exception.getName() + "'";
+        }
+
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                "Invalid request",
+                detail,
+                "invalid-request"
+        );
     }
 }
 

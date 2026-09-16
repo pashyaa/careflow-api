@@ -6,6 +6,7 @@ import com.careflow.serviceops.domain.WorkOrderStatus;
 import com.careflow.serviceops.service.WorkOrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
@@ -22,12 +23,14 @@ public class WorkOrderController {
         this.service = service;
     }
 
+    @PreAuthorize("hasAnyRole('PLANNER', 'ADMIN')")
     @PostMapping
     public ResponseEntity<WorkOrderResponse> create(@Valid @RequestBody CreateWorkOrderRequest request) {
         WorkOrderResponse created = service.create(request);
         return ResponseEntity.created(URI.create("/api/v1/work-orders/" + created.id())).body(created);
     }
 
+    @PreAuthorize("isAuthenticated()")
     @GetMapping
     public PageResponse<WorkOrderResponse> findAll(
             @RequestParam(required = false) String query,
@@ -42,24 +45,27 @@ public class WorkOrderController {
         return service.findAll(query, status, priority, siteId, technicianId, page, size, sortBy, direction);
     }
 
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/{id}")
     public WorkOrderResponse findById(@PathVariable UUID id) {
         return service.findById(id);
     }
 
+    @PreAuthorize("hasAnyRole('PLANNER', 'ADMIN')")
     @PatchMapping("/{id}/assignment")
     public WorkOrderResponse assign(@PathVariable UUID id, @Valid @RequestBody AssignTechnicianRequest request) {
         return service.assign(id, request);
     }
 
+    @PreAuthorize("hasAnyRole('PLANNER', 'TECHNICIAN', 'ADMIN')")
     @PatchMapping("/{id}/status")
     public WorkOrderResponse transition(@PathVariable UUID id, @Valid @RequestBody StatusTransitionRequest request) {
         return service.transition(id, request);
     }
 
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/{id}/history")
     public List<HistoryResponse> history(@PathVariable UUID id) {
         return service.history(id);
     }
 }
-

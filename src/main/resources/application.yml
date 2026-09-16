@@ -1,3 +1,4 @@
+debug: true
 spring:
   application:
     name: careflow-api
@@ -34,3 +35,6 @@ careflow:
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
 
+jwt:
+  secret: ${CAREFLOW_JWT_SECRET:dev-only-secret-please-override-me-32chars-min}
+  expiration: ${CAREFLOW_JWT_EXPIRATION_MS:900000}   # 15 minutes

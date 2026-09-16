@@ -2,6 +2,7 @@ package com.careflow.serviceops.api;
 
 import com.careflow.serviceops.api.dto.OptionResponse;
 import com.careflow.serviceops.service.ReferenceDataService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -20,13 +21,15 @@ public class ReferenceDataController {
         this.service = service;
     }
 
+    @PreAuthorize("hasAnyRole('PLANNER', 'TECHNICIAN', 'ADMIN')")
     @GetMapping("/sites")
     public List<OptionResponse> sites() { return service.sites(); }
 
+    @PreAuthorize("hasAnyRole('PLANNER', 'TECHNICIAN', 'ADMIN')")
     @GetMapping("/assets")
     public List<OptionResponse> assets(@RequestParam UUID siteId) { return service.assets(siteId); }
 
+    @PreAuthorize("hasAnyRole('PLANNER', 'TECHNICIAN', 'ADMIN')")
     @GetMapping("/technicians")
     public List<OptionResponse> technicians() { return service.technicians(); }
 }
-
