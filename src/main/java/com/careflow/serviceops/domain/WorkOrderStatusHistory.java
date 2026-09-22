@@ -30,8 +30,17 @@ public class WorkOrderStatusHistory {
     @Column(length = 500)
     private String note;
 
-    @Column(name = "changed_by", nullable = false, length = 120)
-    private String changedBy;
+    // The acting user's id, resolved server-side from the authenticated principal —
+    // never accepted from the client. Nullable only to accommodate historic/system
+    // rows written before this column existed (see V5 migration); every row written
+    // by the application from now on populates it.
+    @Column(name = "changed_by_user_id")
+    private UUID changedByUserId;
+
+    // Denormalized at write time so the audit trail still reads sensibly even if the
+    // acting user is later renamed or deactivated.
+    @Column(name = "changed_by_display_name", nullable = false, length = 120)
+    private String changedByDisplayName;
 
     @CreationTimestamp
     @Column(name = "changed_at", nullable = false, updatable = false)
@@ -41,18 +50,20 @@ public class WorkOrderStatusHistory {
     }
 
     public WorkOrderStatusHistory(WorkOrder workOrder, WorkOrderStatus fromStatus, WorkOrderStatus toStatus,
-                                  String note, String changedBy) {
+                                  String note, UUID changedByUserId, String changedByDisplayName) {
         this.workOrder = workOrder;
         this.fromStatus = fromStatus;
         this.toStatus = toStatus;
         this.note = note;
-        this.changedBy = changedBy;
+        this.changedByUserId = changedByUserId;
+        this.changedByDisplayName = changedByDisplayName;
     }
 
     public UUID getId() { return id; }
     public WorkOrderStatus getFromStatus() { return fromStatus; }
     public WorkOrderStatus getToStatus() { return toStatus; }
     public String getNote() { return note; }
-    public String getChangedBy() { return changedBy; }
+    public UUID getChangedByUserId() { return changedByUserId; }
+    public String getChangedByDisplayName() { return changedByDisplayName; }
     public OffsetDateTime getChangedAt() { return changedAt; }
 }

@@ -1,5 +1,6 @@
 package com.careflow.serviceops.api;
 
+import com.careflow.serviceops.api.dto.AssignTechnicianRequest;
 import com.careflow.serviceops.api.dto.CreateWorkOrderRequest;
 import com.careflow.serviceops.api.dto.PageResponse;
 import com.careflow.serviceops.api.dto.WorkOrderResponse;
@@ -11,6 +12,7 @@ import com.careflow.serviceops.repository.UserRepository;
 import com.careflow.serviceops.security.JwtService;
 import com.careflow.serviceops.service.WorkOrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +36,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -41,9 +44,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 @SpringBootTest
 class WorkOrderControllerSecurityTest {
 
@@ -124,7 +127,9 @@ class WorkOrderControllerSecurityTest {
 
     @Test
     void expiredTokenIsRejectedWithoutCrashing() throws Exception {
+        // NEW
         String secret = (String) ReflectionTestUtils.getField(jwtService, "secret");
+        assertThat(secret).isNotNull();
         SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
 
         String expiredToken = Jwts.builder()
@@ -137,6 +142,34 @@ class WorkOrderControllerSecurityTest {
         mockMvc.perform(get("/api/v1/work-orders")
                         .header("Authorization", "Bearer " + expiredToken))
                 .andExpect(status().isUnauthorized());
+    }
+    // --- CF-112: spoofed identity is ignored, not rejected, not honoured -----------
+
+    @Test
+    @WithMockUser(roles = "PLANNER")
+    void spoofedChangedByFieldOnAssignmentRequestIsSilentlyIgnored() throws Exception {
+        UUID workOrderId = UUID.randomUUID();
+        UUID technicianId = UUID.randomUUID();
+        var serviceResponse = new WorkOrderResponse(
+                workOrderId, "WO-20261001-AAAA1111", "Title", "Description", Priority.HIGH,
+                WorkOrderStatus.ASSIGNED, null, null, null,
+                OffsetDateTime.now().plusDays(1), null, OffsetDateTime.now(), OffsetDateTime.now(), 0);
+        when(workOrderService.assign(any(), any())).thenReturn(serviceResponse);
+
+        // Build the legitimate payload, then bolt on a spoofed "changedBy" the DTO has
+        // no field for. If the API only ever ignores this rather than 400-ing on an
+        // unknown property, that's the desired "silently ignored" behaviour.
+        ObjectNode payload = objectMapper.valueToTree(new AssignTechnicianRequest(technicianId));
+        payload.put("changedBy", "someone.else@attacker.example");
+
+        mockMvc.perform(patch("/api/v1/work-orders/" + workOrderId + "/assignment")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk());
+
+        // The service is only ever handed the real DTO type, which structurally cannot
+        // carry a changedBy value — there is nowhere for a spoofed identity to go.
+        assertThat(AssignTechnicianRequest.class.getRecordComponents()).hasSize(1);
     }
 
     // --- Bonus: valid role through the REAL filter end-to-end ---------------------

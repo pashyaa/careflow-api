@@ -31,10 +31,11 @@ public class WorkOrderMapper {
         );
     }
 
+    // NEW
     public HistoryResponse toHistoryResponse(WorkOrderStatusHistory history) {
         return new HistoryResponse(
                 history.getId(), history.getFromStatus(), history.getToStatus(), history.getNote(),
-                history.getChangedBy(), history.getChangedAt()
+                history.getChangedByUserId(), history.getChangedByDisplayName(), history.getChangedAt()
         );
     }
 
