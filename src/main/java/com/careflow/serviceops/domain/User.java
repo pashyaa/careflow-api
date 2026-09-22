@@ -23,6 +23,17 @@ public class User {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    @Column(name = "display_name", nullable = false, length = 120)
+    private String displayName;
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
             name = "user_roles",

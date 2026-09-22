@@ -4,6 +4,8 @@ import com.careflow.serviceops.api.dto.*;
 import com.careflow.serviceops.domain.*;
 import com.careflow.serviceops.exception.BusinessRuleException;
 import com.careflow.serviceops.exception.ResourceNotFoundException;
+import com.careflow.serviceops.security.Actor;
+import com.careflow.serviceops.security.CurrentActorResolver;
 import com.careflow.serviceops.repository.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,8 +32,10 @@ public class WorkOrderService {
     private final ServiceSiteRepository siteRepository;
     private final AssetRepository assetRepository;
     private final TechnicianRepository technicianRepository;
+    // NEW
     private final StatusTransitionPolicy transitionPolicy;
     private final WorkOrderMapper mapper;
+    private final CurrentActorResolver currentActorResolver;
 
     public WorkOrderService(WorkOrderRepository workOrderRepository,
                             WorkOrderStatusHistoryRepository historyRepository,
@@ -39,7 +43,8 @@ public class WorkOrderService {
                             AssetRepository assetRepository,
                             TechnicianRepository technicianRepository,
                             StatusTransitionPolicy transitionPolicy,
-                            WorkOrderMapper mapper) {
+                            WorkOrderMapper mapper,
+                            CurrentActorResolver currentActorResolver) {
         this.workOrderRepository = workOrderRepository;
         this.historyRepository = historyRepository;
         this.siteRepository = siteRepository;
@@ -47,6 +52,7 @@ public class WorkOrderService {
         this.technicianRepository = technicianRepository;
         this.transitionPolicy = transitionPolicy;
         this.mapper = mapper;
+        this.currentActorResolver = currentActorResolver;
     }
 
     @Transactional
@@ -68,9 +74,11 @@ public class WorkOrderService {
                 newReferenceNumber(), request.title().trim(), request.description().trim(), request.priority(),
                 site, asset, request.targetResolutionAt()
         );
+        // NEW
         WorkOrder saved = workOrderRepository.save(workOrder);
+        Actor actor = currentActorResolver.resolve();
         historyRepository.save(new WorkOrderStatusHistory(
-                saved, null, WorkOrderStatus.NEW, "Work order created", "Operations Console"
+                saved, null, WorkOrderStatus.NEW, "Work order created", actor.userId(), actor.displayName()
         ));
         return mapper.toResponse(saved);
     }
@@ -105,12 +113,14 @@ public class WorkOrderService {
 
         WorkOrderStatus originalStatus = workOrder.getStatus();
         workOrder.assignTo(technician);
+        // NEW
         if (originalStatus == WorkOrderStatus.NEW) {
             transitionPolicy.verify(originalStatus, WorkOrderStatus.ASSIGNED);
             workOrder.changeStatus(WorkOrderStatus.ASSIGNED);
+            Actor actor = currentActorResolver.resolve();
             historyRepository.save(new WorkOrderStatusHistory(
                     workOrder, originalStatus, WorkOrderStatus.ASSIGNED,
-                    "Assigned to " + technician.getFullName(), request.changedBy().trim()
+                    "Assigned to " + technician.getFullName(), actor.userId(), actor.displayName()
             ));
         }
         return mapper.toResponse(workOrder);
@@ -125,9 +135,12 @@ public class WorkOrderService {
             throw new BusinessRuleException("Assign a technician before starting work.");
         }
 
+        // NEW
         workOrder.changeStatus(request.status());
+        Actor actor = currentActorResolver.resolve();
         historyRepository.save(new WorkOrderStatusHistory(
-                workOrder, originalStatus, request.status(), normalizedNote(request.note()), request.changedBy().trim()
+                workOrder, originalStatus, request.status(), normalizedNote(request.note()),
+                actor.userId(), actor.displayName()
         ));
         return mapper.toResponse(workOrder);
     }
