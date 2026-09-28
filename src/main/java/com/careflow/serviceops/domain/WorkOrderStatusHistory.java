@@ -15,6 +15,11 @@ public class WorkOrderStatusHistory {
     @UuidGenerator
     private UUID id;
 
+    // CF-102: denormalized from the parent work order so audit-trail reads can be
+    // tenant-scoped directly, without relying solely on the work_order_id join.
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "work_order_id", nullable = false)
     private WorkOrder workOrder;
@@ -51,6 +56,7 @@ public class WorkOrderStatusHistory {
 
     public WorkOrderStatusHistory(WorkOrder workOrder, WorkOrderStatus fromStatus, WorkOrderStatus toStatus,
                                   String note, UUID changedByUserId, String changedByDisplayName) {
+        this.organizationId = workOrder.getOrganizationId();
         this.workOrder = workOrder;
         this.fromStatus = fromStatus;
         this.toStatus = toStatus;
@@ -60,6 +66,7 @@ public class WorkOrderStatusHistory {
     }
 
     public UUID getId() { return id; }
+    public UUID getOrganizationId() { return organizationId; }
     public WorkOrderStatus getFromStatus() { return fromStatus; }
     public WorkOrderStatus getToStatus() { return toStatus; }
     public String getNote() { return note; }

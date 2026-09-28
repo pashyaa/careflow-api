@@ -16,7 +16,12 @@ public class Asset {
     @UuidGenerator
     private UUID id;
 
-    @Column(name = "asset_tag", nullable = false, unique = true, length = 40)
+    // CF-102: denormalized from the owning site so tenant filters never require a
+    // join — every query that touches assets can filter on this column directly.
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
+    @Column(name = "asset_tag", nullable = false, length = 40)
     private String assetTag;
 
     @Column(nullable = false, length = 140)
@@ -54,6 +59,7 @@ public class Asset {
     }
 
     public UUID getId() { return id; }
+    public UUID getOrganizationId() { return organizationId; }
     public String getAssetTag() { return assetTag; }
     public String getName() { return name; }
     public String getCategory() { return category; }
@@ -63,4 +69,3 @@ public class Asset {
     public AssetStatus getStatus() { return status; }
     public ServiceSite getSite() { return site; }
 }
-

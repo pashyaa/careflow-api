@@ -19,13 +19,18 @@ public class Technician {
     @UuidGenerator
     private UUID id;
 
-    @Column(name = "employee_code", nullable = false, unique = true, length = 30)
+    // CF-102: the owning tenant. employee_code/email are only unique WITHIN a tenant
+    // now (see V6 migration).
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
+    @Column(name = "employee_code", nullable = false, length = 30)
     private String employeeCode;
 
     @Column(name = "full_name", nullable = false, length = 120)
     private String fullName;
 
-    @Column(nullable = false, unique = true, length = 160)
+    @Column(nullable = false, length = 160)
     private String email;
 
     @Column(name = "primary_skill", nullable = false, length = 100)
@@ -46,10 +51,10 @@ public class Technician {
     }
 
     public UUID getId() { return id; }
+    public UUID getOrganizationId() { return organizationId; }
     public String getEmployeeCode() { return employeeCode; }
     public String getFullName() { return fullName; }
     public String getEmail() { return email; }
     public String getPrimarySkill() { return primarySkill; }
     public boolean isActive() { return active; }
 }
-

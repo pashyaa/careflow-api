@@ -19,7 +19,13 @@ public class WorkOrder {
     @UuidGenerator
     private UUID id;
 
-    @Column(name = "reference_number", nullable = false, unique = true, length = 40)
+    // CF-102: denormalized from the owning site at creation time so every query
+    // (list, count, dashboard) can filter on this column directly without a join.
+    // reference_number is only unique WITHIN a tenant now (see V6 migration).
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
+    @Column(name = "reference_number", nullable = false, length = 40)
     private String referenceNumber;
 
     @Column(nullable = false, length = 180)
@@ -69,8 +75,9 @@ public class WorkOrder {
     protected WorkOrder() {
     }
 
-    public WorkOrder(String referenceNumber, String title, String description, Priority priority,
+    public WorkOrder(UUID organizationId, String referenceNumber, String title, String description, Priority priority,
                      ServiceSite site, Asset asset, OffsetDateTime targetResolutionAt) {
+        this.organizationId = organizationId;
         this.referenceNumber = referenceNumber;
         this.title = title;
         this.description = description;
@@ -88,6 +95,7 @@ public class WorkOrder {
     }
 
     public UUID getId() { return id; }
+    public UUID getOrganizationId() { return organizationId; }
     public String getReferenceNumber() { return referenceNumber; }
     public String getTitle() { return title; }
     public String getDescription() { return description; }
@@ -102,4 +110,3 @@ public class WorkOrder {
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
 }
-

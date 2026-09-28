@@ -24,16 +24,23 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElseThrow(() ->
                         new UsernameNotFoundException("User not found"));
 
-        return org.springframework.security.core.userdetails.User
-                .withUsername(user.getEmail())
-                .password(user.getPassword())
-                .disabled(!user.isEnabled())
-                .authorities(
-                        user.getRoles()
-                                .stream()
-                                .map(role -> role.getName())
-                                .toArray(String[]::new)
-                )
-                .build();
+        java.util.List<org.springframework.security.core.GrantedAuthority> authorities = user.getRoles()
+                .stream()
+                .map(role -> (org.springframework.security.core.GrantedAuthority)
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority(role.getName()))
+                .toList();
+
+        // CF-102: organizationId travels on the principal from here on — every
+        // downstream authenticated call reads the tenant from this object, never
+        // from client input.
+        return new AuthenticatedUser(
+                user.getEmail(),
+                user.getPassword(),
+                user.isEnabled(),
+                authorities,
+                user.getId(),
+                user.getDisplayName(),
+                user.getOrganizationId()
+        );
     }
 }

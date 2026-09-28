@@ -17,17 +17,26 @@ import java.util.UUID;
 
 public interface WorkOrderRepository extends JpaRepository<WorkOrder, UUID>, JpaSpecificationExecutor<WorkOrder> {
 
+    // CF-102: the only single-record lookup used anywhere in the service layer.
+    // Deliberately named so it cannot be mistaken for the inherited, tenant-unaware
+    // findById(UUID) — a cross-tenant id simply yields Optional.empty(), which the
+    // service layer turns into a 404, never a 403 (so an attacker cannot distinguish
+    // "not yours" from "doesn't exist").
     @EntityGraph(attributePaths = {"site", "asset", "assignedTechnician"})
-    Optional<WorkOrder> findOneById(UUID id);
+    Optional<WorkOrder> findOneByIdAndOrganizationId(UUID id, UUID organizationId);
+
+    boolean existsByIdAndOrganizationId(UUID id, UUID organizationId);
 
     @Override
     @EntityGraph(attributePaths = {"site", "asset", "assignedTechnician"})
     Page<WorkOrder> findAll(Specification<WorkOrder> specification, Pageable pageable);
 
-    long countByStatusIn(Collection<WorkOrderStatus> statuses);
-    long countByStatusInAndAssignedTechnicianIsNull(Collection<WorkOrderStatus> statuses);
-    long countByPriorityAndStatusIn(Priority priority, Collection<WorkOrderStatus> statuses);
-    long countByTargetResolutionAtBeforeAndStatusIn(OffsetDateTime timestamp, Collection<WorkOrderStatus> statuses);
-    long countByStatus(WorkOrderStatus status);
+    // Every dashboard aggregate is scoped by organizationId — without this, the
+    // "open work orders" tile on tenant A's dashboard would silently include tenant
+    // B's work orders too.
+    long countByOrganizationIdAndStatusIn(UUID organizationId, Collection<WorkOrderStatus> statuses);
+    long countByOrganizationIdAndStatusInAndAssignedTechnicianIsNull(UUID organizationId, Collection<WorkOrderStatus> statuses);
+    long countByOrganizationIdAndPriorityAndStatusIn(UUID organizationId, Priority priority, Collection<WorkOrderStatus> statuses);
+    long countByOrganizationIdAndTargetResolutionAtBeforeAndStatusIn(UUID organizationId, OffsetDateTime timestamp, Collection<WorkOrderStatus> statuses);
+    long countByOrganizationIdAndStatus(UUID organizationId, WorkOrderStatus status);
 }
-

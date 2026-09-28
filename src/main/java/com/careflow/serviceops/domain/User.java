@@ -26,6 +26,19 @@ public class User {
     @Column(name = "display_name", nullable = false, length = 120)
     private String displayName;
 
+    // CF-102: the tenant this user account belongs to. Resolved onto the JWT principal
+    // at login and used to scope every subsequent read/write for this user.
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
+    public UUID getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(UUID organizationId) {
+        this.organizationId = organizationId;
+    }
+
     public String getDisplayName() {
         return displayName;
     }
