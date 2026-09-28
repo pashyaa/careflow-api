@@ -32,7 +32,6 @@ public class WorkOrderService {
     private final ServiceSiteRepository siteRepository;
     private final AssetRepository assetRepository;
     private final TechnicianRepository technicianRepository;
-    // NEW
     private final StatusTransitionPolicy transitionPolicy;
     private final WorkOrderMapper mapper;
     private final CurrentActorResolver currentActorResolver;
@@ -57,11 +56,16 @@ public class WorkOrderService {
 
     @Transactional
     public WorkOrderResponse create(CreateWorkOrderRequest request) {
-        ServiceSite site = siteRepository.findById(request.siteId())
+        Actor actor = currentActorResolver.resolve();
+        UUID organizationId = actor.organizationId();
+
+        // CF-102: findByIdAndOrganizationId means a siteId from another tenant is
+        // indistinguishable from a siteId that doesn't exist at all — both 404.
+        ServiceSite site = siteRepository.findByIdAndOrganizationId(request.siteId(), organizationId)
                 .filter(ServiceSite::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException("Active service site not found: " + request.siteId()));
 
-        Asset asset = request.assetId() == null ? null : assetRepository.findById(request.assetId())
+        Asset asset = request.assetId() == null ? null : assetRepository.findByIdAndOrganizationId(request.assetId(), organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Asset not found: " + request.assetId()));
         if (asset != null && !asset.getSite().getId().equals(site.getId())) {
             throw new BusinessRuleException("Selected asset does not belong to the selected service site.");
@@ -71,12 +75,10 @@ public class WorkOrderService {
         }
 
         WorkOrder workOrder = new WorkOrder(
-                newReferenceNumber(), request.title().trim(), request.description().trim(), request.priority(),
-                site, asset, request.targetResolutionAt()
+                organizationId, newReferenceNumber(), request.title().trim(), request.description().trim(),
+                request.priority(), site, asset, request.targetResolutionAt()
         );
-        // NEW
         WorkOrder saved = workOrderRepository.save(workOrder);
-        Actor actor = currentActorResolver.resolve();
         historyRepository.save(new WorkOrderStatusHistory(
                 saved, null, WorkOrderStatus.NEW, "Work order created", actor.userId(), actor.displayName()
         ));
@@ -90,34 +92,35 @@ public class WorkOrderService {
         if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
             throw new IllegalArgumentException("Unsupported sort field: " + sortBy);
         }
+        UUID organizationId = currentActorResolver.resolve().organizationId();
         int safeSize = Math.min(Math.max(size, 1), 100);
         Sort sort = Sort.by(Sort.Direction.fromString(direction), sortBy);
         PageRequest pageRequest = PageRequest.of(Math.max(page, 0), safeSize, sort);
         Page<WorkOrder> result = workOrderRepository.findAll(
-                WorkOrderSpecifications.filteredBy(query, status, priority, siteId, technicianId), pageRequest
+                WorkOrderSpecifications.filteredBy(organizationId, query, status, priority, siteId, technicianId),
+                pageRequest
         );
         return PageResponse.from(result, mapper::toResponse);
     }
 
     @Transactional(readOnly = true)
     public WorkOrderResponse findById(UUID id) {
-        return mapper.toResponse(load(id));
+        return mapper.toResponse(load(id, currentActorResolver.resolve().organizationId()));
     }
 
     @Transactional
     public WorkOrderResponse assign(UUID id, AssignTechnicianRequest request) {
-        WorkOrder workOrder = load(id);
-        Technician technician = technicianRepository.findById(request.technicianId())
+        Actor actor = currentActorResolver.resolve();
+        WorkOrder workOrder = load(id, actor.organizationId());
+        Technician technician = technicianRepository.findByIdAndOrganizationId(request.technicianId(), actor.organizationId())
                 .filter(Technician::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException("Active technician not found: " + request.technicianId()));
 
         WorkOrderStatus originalStatus = workOrder.getStatus();
         workOrder.assignTo(technician);
-        // NEW
         if (originalStatus == WorkOrderStatus.NEW) {
             transitionPolicy.verify(originalStatus, WorkOrderStatus.ASSIGNED);
             workOrder.changeStatus(WorkOrderStatus.ASSIGNED);
-            Actor actor = currentActorResolver.resolve();
             historyRepository.save(new WorkOrderStatusHistory(
                     workOrder, originalStatus, WorkOrderStatus.ASSIGNED,
                     "Assigned to " + technician.getFullName(), actor.userId(), actor.displayName()
@@ -128,16 +131,15 @@ public class WorkOrderService {
 
     @Transactional
     public WorkOrderResponse transition(UUID id, StatusTransitionRequest request) {
-        WorkOrder workOrder = load(id);
+        Actor actor = currentActorResolver.resolve();
+        WorkOrder workOrder = load(id, actor.organizationId());
         WorkOrderStatus originalStatus = workOrder.getStatus();
         transitionPolicy.verify(originalStatus, request.status());
         if (request.status() == WorkOrderStatus.IN_PROGRESS && workOrder.getAssignedTechnician() == null) {
             throw new BusinessRuleException("Assign a technician before starting work.");
         }
 
-        // NEW
         workOrder.changeStatus(request.status());
-        Actor actor = currentActorResolver.resolve();
         historyRepository.save(new WorkOrderStatusHistory(
                 workOrder, originalStatus, request.status(), normalizedNote(request.note()),
                 actor.userId(), actor.displayName()
@@ -147,16 +149,17 @@ public class WorkOrderService {
 
     @Transactional(readOnly = true)
     public List<HistoryResponse> history(UUID id) {
-        if (!workOrderRepository.existsById(id)) {
+        UUID organizationId = currentActorResolver.resolve().organizationId();
+        if (!workOrderRepository.existsByIdAndOrganizationId(id, organizationId)) {
             throw new ResourceNotFoundException("Work order not found: " + id);
         }
-        return historyRepository.findByWorkOrderIdOrderByChangedAtAsc(id).stream()
+        return historyRepository.findByWorkOrderIdAndOrganizationIdOrderByChangedAtAsc(id, organizationId).stream()
                 .map(mapper::toHistoryResponse)
                 .toList();
     }
 
-    private WorkOrder load(UUID id) {
-        return workOrderRepository.findOneById(id)
+    private WorkOrder load(UUID id, UUID organizationId) {
+        return workOrderRepository.findOneByIdAndOrganizationId(id, organizationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Work order not found: " + id));
     }
 
@@ -170,4 +173,3 @@ public class WorkOrderService {
         return "WO-" + date + "-" + suffix;
     }
 }
-

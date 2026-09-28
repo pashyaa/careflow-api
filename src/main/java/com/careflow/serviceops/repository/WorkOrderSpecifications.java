@@ -15,10 +15,15 @@ public final class WorkOrderSpecifications {
     private WorkOrderSpecifications() {
     }
 
-    public static Specification<WorkOrder> filteredBy(String query, WorkOrderStatus status, Priority priority,
-                                                       UUID siteId, UUID technicianId) {
+    public static Specification<WorkOrder> filteredBy(UUID organizationId, String query, WorkOrderStatus status,
+                                                      Priority priority, UUID siteId, UUID technicianId) {
         return (root, criteriaQuery, builder) -> {
             List<Predicate> predicates = new ArrayList<>();
+
+            // CF-102: applied unconditionally, first, on every listing query — this is
+            // the tenant boundary for the work order list/search endpoint. It is not
+            // optional and not derived from any of the other (client-supplied) filters.
+            predicates.add(builder.equal(root.get("organizationId"), organizationId));
 
             if (query != null && !query.isBlank()) {
                 String pattern = "%" + query.trim().toLowerCase() + "%";
@@ -45,4 +50,3 @@ public final class WorkOrderSpecifications {
         };
     }
 }
-

@@ -19,7 +19,12 @@ public class ServiceSite {
     @UuidGenerator
     private UUID id;
 
-    @Column(name = "site_code", nullable = false, unique = true, length = 30)
+    // CF-102: the owning tenant. site_code is only unique WITHIN a tenant now (see
+    // V6 migration) — two tenants may legitimately have a site "BLR-DC-01".
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
+    @Column(name = "site_code", nullable = false, length = 30)
     private String siteCode;
 
     @Column(nullable = false, length = 120)
@@ -55,6 +60,7 @@ public class ServiceSite {
     }
 
     public UUID getId() { return id; }
+    public UUID getOrganizationId() { return organizationId; }
     public String getSiteCode() { return siteCode; }
     public String getName() { return name; }
     public String getCustomerName() { return customerName; }
@@ -64,4 +70,3 @@ public class ServiceSite {
     public String getPostalCode() { return postalCode; }
     public boolean isActive() { return active; }
 }
-
