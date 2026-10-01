@@ -101,7 +101,7 @@ class WorkOrderServiceTest {
         when(workOrderRepository.findOneByIdAndOrganizationId(workOrderId, organizationId)).thenReturn(Optional.of(workOrder));
         when(technicianRepository.findByIdAndOrganizationId(technicianId, organizationId)).thenReturn(Optional.of(technician));
 
-        var response = service.assign(workOrderId, new AssignTechnicianRequest(technicianId));
+        var response = service.assign(workOrderId, new AssignTechnicianRequest(technicianId), 0L);
 
         assertThat(response.status()).isEqualTo(WorkOrderStatus.ASSIGNED);
         assertThat(response.assignedTechnician().name()).isEqualTo("Ananya Rao");

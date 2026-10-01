@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -154,7 +155,7 @@ class WorkOrderControllerSecurityTest {
                 workOrderId, "WO-20261001-AAAA1111", "Title", "Description", Priority.HIGH,
                 WorkOrderStatus.ASSIGNED, null, null, null,
                 OffsetDateTime.now().plusDays(1), null, OffsetDateTime.now(), OffsetDateTime.now(), 0);
-        when(workOrderService.assign(any(), any())).thenReturn(serviceResponse);
+        when(workOrderService.assign(any(), any(), anyLong())).thenReturn(serviceResponse);
 
         // Build the legitimate payload, then bolt on a spoofed "changedBy" the DTO has
         // no field for. If the API only ever ignores this rather than 400-ing on an
@@ -163,6 +164,7 @@ class WorkOrderControllerSecurityTest {
         payload.put("changedBy", "someone.else@attacker.example");
 
         mockMvc.perform(patch("/api/v1/work-orders/" + workOrderId + "/assignment")
+                        .header("If-Match", "\"0\"")
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(payload)))
                 .andExpect(status().isOk());

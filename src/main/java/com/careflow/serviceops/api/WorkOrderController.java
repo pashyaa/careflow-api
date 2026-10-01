@@ -8,7 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.http.HttpHeaders;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
@@ -47,22 +47,32 @@ public class WorkOrderController {
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/{id}")
-    public WorkOrderResponse findById(@PathVariable UUID id) {
-        return service.findById(id);
+    public ResponseEntity<WorkOrderResponse> findById(@PathVariable UUID id) {
+        return withEtag(service.findById(id));
     }
 
     @PreAuthorize("hasAnyRole('PLANNER', 'ADMIN')")
     @PatchMapping("/{id}/assignment")
-    public WorkOrderResponse assign(@PathVariable UUID id, @Valid @RequestBody AssignTechnicianRequest request) {
-        return service.assign(id, request);
+    public ResponseEntity<WorkOrderResponse> assign(
+            @PathVariable UUID id,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Valid @RequestBody AssignTechnicianRequest request) {
+        return withEtag(service.assign(id, request, IfMatchParser.parse(ifMatch)));
     }
 
     @PreAuthorize("hasAnyRole('PLANNER', 'TECHNICIAN', 'ADMIN')")
     @PatchMapping("/{id}/status")
-    public WorkOrderResponse transition(@PathVariable UUID id, @Valid @RequestBody StatusTransitionRequest request) {
-        return service.transition(id, request);
+    public ResponseEntity<WorkOrderResponse> transition(
+            @PathVariable UUID id,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Valid @RequestBody StatusTransitionRequest request) {
+        return withEtag(service.transition(id, request, IfMatchParser.parse(ifMatch)));
     }
 
+    private ResponseEntity<WorkOrderResponse> withEtag(WorkOrderResponse body) {
+        // Spring wraps the value in quotes -> ETag: "3"
+        return ResponseEntity.ok().eTag(String.valueOf(body.version())).body(body);
+    }
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/{id}/history")
     public List<HistoryResponse> history(@PathVariable UUID id) {
