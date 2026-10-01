@@ -20,6 +20,7 @@ public class WebConfiguration implements WebMvcConfigurer {
                 .allowedOrigins(allowedOrigin)
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
+                .exposedHeaders("ETag")
                 .allowCredentials(true);
     }
 }

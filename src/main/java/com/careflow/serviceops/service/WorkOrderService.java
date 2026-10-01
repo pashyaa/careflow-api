@@ -12,6 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.careflow.serviceops.exception.StaleVersionException;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -109,9 +110,11 @@ public class WorkOrderService {
     }
 
     @Transactional
-    public WorkOrderResponse assign(UUID id, AssignTechnicianRequest request) {
+    public WorkOrderResponse assign(UUID id, AssignTechnicianRequest request, long expectedVersion) {
         Actor actor = currentActorResolver.resolve();
         WorkOrder workOrder = load(id, actor.organizationId());
+        verifyVersion(workOrder, expectedVersion);
+
         Technician technician = technicianRepository.findByIdAndOrganizationId(request.technicianId(), actor.organizationId())
                 .filter(Technician::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException("Active technician not found: " + request.technicianId()));
@@ -126,13 +129,16 @@ public class WorkOrderService {
                     "Assigned to " + technician.getFullName(), actor.userId(), actor.displayName()
             ));
         }
+        workOrderRepository.flush();
         return mapper.toResponse(workOrder);
     }
 
     @Transactional
-    public WorkOrderResponse transition(UUID id, StatusTransitionRequest request) {
+    public WorkOrderResponse transition(UUID id, StatusTransitionRequest request, long expectedVersion) {
         Actor actor = currentActorResolver.resolve();
         WorkOrder workOrder = load(id, actor.organizationId());
+        verifyVersion(workOrder, expectedVersion);
+
         WorkOrderStatus originalStatus = workOrder.getStatus();
         transitionPolicy.verify(originalStatus, request.status());
         if (request.status() == WorkOrderStatus.IN_PROGRESS && workOrder.getAssignedTechnician() == null) {
@@ -144,9 +150,15 @@ public class WorkOrderService {
                 workOrder, originalStatus, request.status(), normalizedNote(request.note()),
                 actor.userId(), actor.displayName()
         ));
+        workOrderRepository.flush();
         return mapper.toResponse(workOrder);
     }
 
+    private void verifyVersion(WorkOrder workOrder, long expectedVersion) {
+        if (workOrder.getVersion() != expectedVersion) {
+            throw new StaleVersionException(expectedVersion, workOrder.getVersion());
+        }
+    }
     @Transactional(readOnly = true)
     public List<HistoryResponse> history(UUID id) {
         UUID organizationId = currentActorResolver.resolve().organizationId();

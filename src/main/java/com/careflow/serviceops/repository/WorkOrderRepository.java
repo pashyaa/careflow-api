@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -39,4 +41,7 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrder, UUID>, Jpa
     long countByOrganizationIdAndPriorityAndStatusIn(UUID organizationId, Priority priority, Collection<WorkOrderStatus> statuses);
     long countByOrganizationIdAndTargetResolutionAtBeforeAndStatusIn(UUID organizationId, OffsetDateTime timestamp, Collection<WorkOrderStatus> statuses);
     long countByOrganizationIdAndStatus(UUID organizationId, WorkOrderStatus status);
+    @Query("select w.version from WorkOrder w where w.id = :id and w.organizationId = :organizationId")
+    Optional<Long> findVersionByIdAndOrganizationId(@Param("id") UUID id,
+                                                    @Param("organizationId") UUID organizationId);
 }
