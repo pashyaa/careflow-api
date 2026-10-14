@@ -79,8 +79,7 @@ class WorkOrderControllerSecurityTest {
                 "Unit reports a high discharge temperature alarm.",
                 Priority.HIGH,
                 UUID.randomUUID(),
-                null,
-                OffsetDateTime.now().plusDays(1));
+                null);
     }
 
     // --- Scenario 1: anonymous --------------------------------------------------
@@ -115,7 +114,7 @@ class WorkOrderControllerSecurityTest {
         var created = new WorkOrderResponse(
                 UUID.randomUUID(), "WO-20261001-AAAA1111", request.title(), request.description(),
                 request.priority(), WorkOrderStatus.NEW, null, null, null,
-                request.targetResolutionAt(), null, OffsetDateTime.now(), OffsetDateTime.now(), 0);
+                OffsetDateTime.now().plusDays(1), null, OffsetDateTime.now(), OffsetDateTime.now(), 0);
         when(workOrderService.create(any())).thenReturn(created);
 
         mockMvc.perform(post("/api/v1/work-orders")

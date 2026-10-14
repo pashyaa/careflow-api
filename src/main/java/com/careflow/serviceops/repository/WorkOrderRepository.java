@@ -44,4 +44,32 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrder, UUID>, Jpa
     @Query("select w.version from WorkOrder w where w.id = :id and w.organizationId = :organizationId")
     Optional<Long> findVersionByIdAndOrganizationId(@Param("id") UUID id,
                                                     @Param("organizationId") UUID organizationId);
+    // CF-106: BREACHED = resolution deadline passed, OR never responded and the response
+    // deadline passed. Strictly "<": a work order is still on time AT its deadline instant.
+    @Query("""
+            select count(w) from WorkOrder w
+            where w.organizationId = :organizationId
+              and w.status in :statuses
+              and (w.targetResolutionAt < :now
+                   or (w.firstResponseAt is null and w.responseDueAt < :now))
+            """)
+    long countSlaBreached(@Param("organizationId") UUID organizationId,
+                          @Param("statuses") Collection<WorkOrderStatus> statuses,
+                          @Param("now") OffsetDateTime now);
+
+    // AT RISK = not breached, but a response/resolution at-risk threshold has been reached
+    // ("<=": reaching the threshold instant counts). Written without NOT(...) to avoid SQL
+    // three-valued-logic surprises with NULL snapshot columns on legacy rows.
+    @Query("""
+            select count(w) from WorkOrder w
+            where w.organizationId = :organizationId
+              and w.status in :statuses
+              and w.targetResolutionAt >= :now
+              and (w.firstResponseAt is not null or w.responseDueAt is null or w.responseDueAt >= :now)
+              and (w.resolutionAtRiskAt <= :now
+                   or (w.firstResponseAt is null and w.responseAtRiskAt <= :now))
+            """)
+    long countSlaAtRisk(@Param("organizationId") UUID organizationId,
+                        @Param("statuses") Collection<WorkOrderStatus> statuses,
+                        @Param("now") OffsetDateTime now);
 }

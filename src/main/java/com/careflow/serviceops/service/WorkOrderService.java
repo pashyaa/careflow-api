@@ -36,6 +36,7 @@ public class WorkOrderService {
     private final StatusTransitionPolicy transitionPolicy;
     private final WorkOrderMapper mapper;
     private final CurrentActorResolver currentActorResolver;
+    private final SlaService slaService;
 
     public WorkOrderService(WorkOrderRepository workOrderRepository,
                             WorkOrderStatusHistoryRepository historyRepository,
@@ -44,7 +45,8 @@ public class WorkOrderService {
                             TechnicianRepository technicianRepository,
                             StatusTransitionPolicy transitionPolicy,
                             WorkOrderMapper mapper,
-                            CurrentActorResolver currentActorResolver) {
+                            CurrentActorResolver currentActorResolver,
+                            SlaService slaService) {
         this.workOrderRepository = workOrderRepository;
         this.historyRepository = historyRepository;
         this.siteRepository = siteRepository;
@@ -53,6 +55,7 @@ public class WorkOrderService {
         this.transitionPolicy = transitionPolicy;
         this.mapper = mapper;
         this.currentActorResolver = currentActorResolver;
+        this.slaService = slaService;
     }
 
     @Transactional
@@ -75,10 +78,14 @@ public class WorkOrderService {
             throw new BusinessRuleException("A work order cannot be created for a retired asset.");
         }
 
+        // CF-106: the deadline is no longer typed in by the planner. Pick the most specific
+        // policy, compute deadlines in the site's time zone, and snapshot it all onto the work order.
+        SlaPlan sla = slaService.plan(site, asset, request.priority(), OffsetDateTime.now());
         WorkOrder workOrder = new WorkOrder(
                 organizationId, newReferenceNumber(), request.title().trim(), request.description().trim(),
-                request.priority(), site, asset, request.targetResolutionAt()
+                request.priority(), site, asset, sla.resolutionDueAt()
         );
+        workOrder.applySla(sla);
         WorkOrder saved = workOrderRepository.save(workOrder);
         historyRepository.save(new WorkOrderStatusHistory(
                 saved, null, WorkOrderStatus.NEW, "Work order created", actor.userId(), actor.displayName()
