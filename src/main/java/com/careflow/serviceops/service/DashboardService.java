@@ -33,10 +33,9 @@ public class DashboardService {
     }
 
     public DashboardSummaryResponse summary() {
-        // CF-102: every aggregate below is scoped to the caller's own tenant — without
-        // this, the dashboard would silently blend counts across every tenant in the
-        // database, which is a worse leak than a single record because it's invisible.
+        // CF-102: every aggregate below is scoped to the caller's own tenant.
         UUID organizationId = currentActorResolver.resolve().organizationId();
+        OffsetDateTime now = OffsetDateTime.now();
 
         Map<String, Long> breakdown = new LinkedHashMap<>();
         Arrays.stream(WorkOrderStatus.values()).forEach(status ->
@@ -45,11 +44,14 @@ public class DashboardService {
         return new DashboardSummaryResponse(
                 repository.countByOrganizationIdAndStatusIn(organizationId, OPEN_STATUSES),
                 repository.countByOrganizationIdAndTargetResolutionAtBeforeAndStatusIn(
-                        organizationId, OffsetDateTime.now(), OPEN_STATUSES),
+                        organizationId, now, OPEN_STATUSES),
                 repository.countByOrganizationIdAndStatusInAndAssignedTechnicianIsNull(organizationId, OPEN_STATUSES),
                 repository.countByOrganizationIdAndPriorityAndStatusIn(organizationId, Priority.CRITICAL, OPEN_STATUSES),
+                // CF-106
+                repository.countSlaAtRisk(organizationId, OPEN_STATUSES, now),
+                repository.countSlaBreached(organizationId, OPEN_STATUSES, now),
                 breakdown,
-                OffsetDateTime.now()
+                now
         );
     }
 }

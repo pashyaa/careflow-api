@@ -6,6 +6,8 @@ import com.careflow.serviceops.domain.Asset;
 import com.careflow.serviceops.domain.ServiceSite;
 import com.careflow.serviceops.domain.Technician;
 import com.careflow.serviceops.domain.WorkOrder;
+import com.careflow.serviceops.domain.SlaState;
+import java.time.OffsetDateTime;
 import com.careflow.serviceops.domain.WorkOrderStatusHistory;
 import org.springframework.stereotype.Component;
 
@@ -27,7 +29,22 @@ public class WorkOrderMapper {
                 workOrder.getResolvedAt(),
                 workOrder.getCreatedAt(),
                 workOrder.getUpdatedAt(),
-                workOrder.getVersion()
+                workOrder.getVersion(),
+                toSla(workOrder)
+        );
+    }
+
+    private WorkOrderResponse.SlaView toSla(WorkOrder workOrder) {
+        OffsetDateTime now = OffsetDateTime.now();
+        SlaState response = SlaStatusEvaluator.response(workOrder, now);
+        SlaState resolution = SlaStatusEvaluator.resolution(workOrder, now);
+        return new WorkOrderResponse.SlaView(
+                workOrder.getSlaPolicyId(), workOrder.getSlaPolicyName(), workOrder.getSlaPolicyScope(),
+                workOrder.getSlaResponseMinutes(), workOrder.getSlaResolutionMinutes(),
+                workOrder.getSlaBusinessHoursOnly(), workOrder.getSlaTimeZone(),
+                workOrder.getResponseDueAt(), workOrder.getFirstResponseAt(), response,
+                workOrder.getTargetResolutionAt(), workOrder.getResolvedAt(), resolution,
+                SlaStatusEvaluator.overall(response, resolution)
         );
     }
 

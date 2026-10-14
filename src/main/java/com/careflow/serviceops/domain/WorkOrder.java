@@ -60,6 +60,41 @@ public class WorkOrder {
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
 
+    // CF-106: snapshot of the SLA policy chosen at creation. Later edits to the policy
+    // never change these values. target_resolution_at above doubles as the resolution deadline.
+    @Column(name = "sla_policy_id")
+    private UUID slaPolicyId;
+
+    @Column(name = "sla_policy_name", length = 120)
+    private String slaPolicyName;
+
+    @Column(name = "sla_policy_scope", length = 40)
+    private String slaPolicyScope;
+
+    @Column(name = "sla_response_minutes")
+    private Integer slaResponseMinutes;
+
+    @Column(name = "sla_resolution_minutes")
+    private Integer slaResolutionMinutes;
+
+    @Column(name = "sla_business_hours_only")
+    private Boolean slaBusinessHoursOnly;
+
+    @Column(name = "sla_time_zone", length = 60)
+    private String slaTimeZone;
+
+    @Column(name = "response_due_at")
+    private OffsetDateTime responseDueAt;
+
+    @Column(name = "response_at_risk_at")
+    private OffsetDateTime responseAtRiskAt;
+
+    @Column(name = "resolution_at_risk_at")
+    private OffsetDateTime resolutionAtRiskAt;
+
+    @Column(name = "first_response_at")
+    private OffsetDateTime firstResponseAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -92,6 +127,25 @@ public class WorkOrder {
     public void changeStatus(WorkOrderStatus status) {
         this.status = status;
         this.resolvedAt = status == WorkOrderStatus.RESOLVED ? OffsetDateTime.now() : null;
+        // CF-106: the response SLA stops the first time work moves past NEW.
+        if (firstResponseAt == null && status != WorkOrderStatus.NEW && status != WorkOrderStatus.CANCELLED) {
+            firstResponseAt = OffsetDateTime.now();
+        }
+    }
+
+    /** CF-106: copies the chosen policy and computed deadlines onto this work order. */
+    public void applySla(SlaPlan plan) {
+        this.slaPolicyId = plan.policyId();
+        this.slaPolicyName = plan.policyName();
+        this.slaPolicyScope = plan.policyScope();
+        this.slaResponseMinutes = plan.responseMinutes();
+        this.slaResolutionMinutes = plan.resolutionMinutes();
+        this.slaBusinessHoursOnly = plan.businessHoursOnly();
+        this.slaTimeZone = plan.timeZone();
+        this.responseDueAt = plan.responseDueAt();
+        this.responseAtRiskAt = plan.responseAtRiskAt();
+        this.resolutionAtRiskAt = plan.resolutionAtRiskAt();
+        this.targetResolutionAt = plan.resolutionDueAt();
     }
 
     public UUID getId() { return id; }
@@ -109,4 +163,15 @@ public class WorkOrder {
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
+    public UUID getSlaPolicyId() { return slaPolicyId; }
+    public String getSlaPolicyName() { return slaPolicyName; }
+    public String getSlaPolicyScope() { return slaPolicyScope; }
+    public Integer getSlaResponseMinutes() { return slaResponseMinutes; }
+    public Integer getSlaResolutionMinutes() { return slaResolutionMinutes; }
+    public Boolean getSlaBusinessHoursOnly() { return slaBusinessHoursOnly; }
+    public String getSlaTimeZone() { return slaTimeZone; }
+    public OffsetDateTime getResponseDueAt() { return responseDueAt; }
+    public OffsetDateTime getResponseAtRiskAt() { return responseAtRiskAt; }
+    public OffsetDateTime getResolutionAtRiskAt() { return resolutionAtRiskAt; }
+    public OffsetDateTime getFirstResponseAt() { return firstResponseAt; }
 }

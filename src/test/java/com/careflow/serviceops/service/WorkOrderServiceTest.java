@@ -33,6 +33,7 @@ class WorkOrderServiceTest {
     @Mock AssetRepository assetRepository;
     @Mock TechnicianRepository technicianRepository;
     @Mock CurrentActorResolver currentActorResolver;
+    @Mock SlaService slaService;
 
     private final UUID organizationId = UUID.randomUUID();
     private WorkOrderService service;
@@ -41,7 +42,7 @@ class WorkOrderServiceTest {
     void setUp() {
         service = new WorkOrderService(
                 workOrderRepository, historyRepository, siteRepository, assetRepository, technicianRepository,
-                new StatusTransitionPolicy(), new WorkOrderMapper(), currentActorResolver
+                new StatusTransitionPolicy(), new WorkOrderMapper(), currentActorResolver, slaService
         );
     }
 
@@ -56,13 +57,22 @@ class WorkOrderServiceTest {
         when(siteRepository.findByIdAndOrganizationId(siteId, organizationId)).thenReturn(Optional.of(site));
         when(workOrderRepository.save(any(WorkOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime resolutionDue = now.plusHours(8);
+        when(slaService.plan(any(), any(), any(), any())).thenReturn(new SlaPlan(
+                UUID.randomUUID(), "High - default", "PRIORITY", 120, 480, true, "Asia/Kolkata",
+                now.plusHours(2), now.plusMinutes(90), resolutionDue, now.plusHours(6)));
+
         var response = service.create(new CreateWorkOrderRequest(
-                "Cooling alarm", "Investigate repeated high temperature alarms", Priority.HIGH,
-                siteId, null, OffsetDateTime.now().plusDays(1)
+                "Cooling alarm", "Investigate repeated high temperature alarms", Priority.HIGH, siteId, null
         ));
 
         assertThat(response.status()).isEqualTo(WorkOrderStatus.NEW);
         assertThat(response.referenceNumber()).startsWith("WO-");
+        // CF-106: the deadline comes from the policy, and the snapshot is on the work order
+        assertThat(response.targetResolutionAt()).isEqualTo(resolutionDue);
+        assertThat(response.sla().policyName()).isEqualTo("High - default");
+        assertThat(response.sla().responseMinutes()).isEqualTo(120);
 
         ArgumentCaptor<WorkOrderStatusHistory> captor = ArgumentCaptor.forClass(WorkOrderStatusHistory.class);
         verify(historyRepository).save(captor.capture());
@@ -80,7 +90,7 @@ class WorkOrderServiceTest {
 
         assertThatThrownBy(() -> service.create(new CreateWorkOrderRequest(
                 "Cooling alarm", "Investigate repeated high temperature alarms", Priority.HIGH,
-                siteId, null, OffsetDateTime.now().plusDays(1)
+                siteId, null
         ))).isInstanceOf(ResourceNotFoundException.class);
     }
 

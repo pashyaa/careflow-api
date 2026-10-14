@@ -7,7 +7,7 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
-
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -48,6 +48,19 @@ public class ServiceSite {
     @Column(nullable = false)
     private boolean active = true;
 
+    // CF-106: the site's working calendar. Wall-clock times in the site's OWN time zone.
+    @Column(name = "time_zone", nullable = false, length = 60)
+    private String timeZone = "Asia/Kolkata";
+
+    @Column(name = "business_start", nullable = false)
+    private LocalTime businessStart = LocalTime.of(9, 0);
+
+    @Column(name = "business_end", nullable = false)
+    private LocalTime businessEnd = LocalTime.of(18, 0);
+
+    @Column(name = "business_days", nullable = false, length = 40)
+    private String businessDays = "MON,TUE,WED,THU,FRI";
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -69,4 +82,8 @@ public class ServiceSite {
     public String getState() { return state; }
     public String getPostalCode() { return postalCode; }
     public boolean isActive() { return active; }
+    public String getTimeZone() { return timeZone; }
+    public LocalTime getBusinessStart() { return businessStart; }
+    public LocalTime getBusinessEnd() { return businessEnd; }
+    public String getBusinessDays() { return businessDays; }
 }

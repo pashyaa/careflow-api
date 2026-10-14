@@ -8,8 +8,9 @@ public record DashboardSummaryResponse(
         long overdueWorkOrders,
         long unassignedWorkOrders,
         long criticalOpenWorkOrders,
+        long atRiskWorkOrders,
+        long breachedWorkOrders,
         Map<String, Long> statusBreakdown,
         OffsetDateTime generatedAt
 ) {
 }
-
