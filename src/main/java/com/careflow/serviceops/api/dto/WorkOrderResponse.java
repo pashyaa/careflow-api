@@ -34,7 +34,7 @@ public record WorkOrderResponse(
                 targetResolutionAt, resolvedAt, createdAt, updatedAt, version, null);
     }
 
-    public record SiteView(UUID id, String code, String name, String customerName, String city) { }
+    public record SiteView(UUID id, String code, String name, String customerName, String city, String timeZone) { }
     public record AssetView(UUID id, String tag, String name, String category, String status) { }
     public record TechnicianView(UUID id, String employeeCode, String name, String email, String primarySkill) { }
 

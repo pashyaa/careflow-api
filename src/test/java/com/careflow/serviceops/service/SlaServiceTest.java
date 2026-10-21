@@ -152,6 +152,23 @@ class SlaServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("BLR-DC-01");
     }
+    @Test
+    void sameInstantGivesDifferentDeadlinesForBengaluruAndNewYorkSites() {
+        SlaPolicy high = policy(null, null, Priority.HIGH, 60, 120, true);
+        lenient().when(policyRepository.findByOrganizationIdAndActiveTrue(orgId)).thenReturn(List.of(high));
+        OffsetDateTime raisedAt = OffsetDateTime.parse("2026-10-09T20:00:00Z");   // 01:30 Sat IST, 16:00 Fri EDT
+
+        SlaPlan bengaluru = service.plan(site, null, Priority.HIGH, raisedAt);
+        assertThat(bengaluru.timeZone()).isEqualTo("Asia/Kolkata");
+        assertThat(bengaluru.responseDueAt().toInstant()).isEqualTo(OffsetDateTime.parse("2026-10-12T10:00+05:30").toInstant());
+        assertThat(bengaluru.resolutionDueAt().toInstant()).isEqualTo(OffsetDateTime.parse("2026-10-12T11:00+05:30").toInstant());
+
+        lenient().when(site.getTimeZone()).thenReturn("America/New_York");
+        SlaPlan newYork = service.plan(site, null, Priority.HIGH, raisedAt);
+        assertThat(newYork.timeZone()).isEqualTo("America/New_York");
+        assertThat(newYork.responseDueAt().toInstant()).isEqualTo(OffsetDateTime.parse("2026-10-09T17:00-04:00").toInstant());
+        assertThat(newYork.resolutionDueAt().toInstant()).isEqualTo(OffsetDateTime.parse("2026-10-09T18:00-04:00").toInstant());
+    }
 
     @Test
     void businessDaysAreParsedFromTheSiteCsv() {
