@@ -124,6 +124,13 @@ class SlaDeadlineCalculatorTest {
         SlaCalendar night = calendar("America/New_York", "01:00", "05:00", EnumSet.of(DayOfWeek.SUNDAY), Set.of());
         assertDeadline("2026-11-01T01:00-04:00", 300, true, night, "2026-11-01T05:00-05:00");
     }
+    private static final SlaCalendar NEW_YORK = calendar("America/New_York", "09:00", "18:00", WEEKDAYS, Set.of());
+
+    @Test
+    void newYorkBusinessHoursSkipTheWeekendAcrossTheNovemberDstChange() {
+        // Fri 30 Oct 17:00 EDT: 60 min left on Friday, Sat/Sun closed, remaining 60 min Mon 2 Nov (now EST, -05:00)
+        assertDeadline("2026-10-30T17:00-04:00", 120, true, NEW_YORK, "2026-11-02T10:00-05:00");
+    }
 
     // ---- guard rails ---------------------------------------------------------------------
 

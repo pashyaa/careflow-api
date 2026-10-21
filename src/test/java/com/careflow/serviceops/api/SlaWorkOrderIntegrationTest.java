@@ -51,6 +51,7 @@ class SlaWorkOrderIntegrationTest {
     @Test
     void priorityOnlyPolicyIsSnapshottedAndTheDeadlineIsCalculated() throws Exception {
         JsonNode created = create(BLR_SITE, null, "HIGH");
+        assertThat(created.at("/site/timeZone").asText()).isEqualTo("Asia/Kolkata");
         assertThat(created.at("/sla/policyScope").asText()).isEqualTo("PRIORITY");
         assertThat(created.at("/sla/responseMinutes").asInt()).isEqualTo(120);
         assertThat(created.at("/sla/timeZone").asText()).isEqualTo("Asia/Kolkata");

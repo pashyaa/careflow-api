@@ -58,7 +58,8 @@ public class WorkOrderMapper {
 
     private WorkOrderResponse.SiteView toSite(ServiceSite site) {
         return new WorkOrderResponse.SiteView(
-                site.getId(), site.getSiteCode(), site.getName(), site.getCustomerName(), site.getCity()
+                site.getId(), site.getSiteCode(), site.getName(), site.getCustomerName(), site.getCity(),
+                site.getTimeZone()
         );
     }
 
