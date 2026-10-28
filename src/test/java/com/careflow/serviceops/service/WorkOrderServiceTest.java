@@ -14,7 +14,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
+import com.careflow.serviceops.exception.FieldValidationException;
+import java.util.Map;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +35,7 @@ class WorkOrderServiceTest {
     @Mock TechnicianRepository technicianRepository;
     @Mock CurrentActorResolver currentActorResolver;
     @Mock SlaService slaService;
+    @Mock ReasonCodeRepository reasonCodeRepository;
 
     private final UUID organizationId = UUID.randomUUID();
     private WorkOrderService service;
@@ -42,7 +44,8 @@ class WorkOrderServiceTest {
     void setUp() {
         service = new WorkOrderService(
                 workOrderRepository, historyRepository, siteRepository, assetRepository, technicianRepository,
-                new StatusTransitionPolicy(), new WorkOrderMapper(), currentActorResolver, slaService
+                new StatusTransitionPolicy(), new WorkOrderMapper(), currentActorResolver, slaService,
+                reasonCodeRepository
         );
     }
 
@@ -160,7 +163,9 @@ class WorkOrderServiceTest {
         var componentNames = java.util.Arrays.stream(StatusTransitionRequest.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName)
                 .toList();
-        assertThat(componentNames).containsExactlyInAnyOrder("status", "note");
+        // BUG-305: reasonCode is allowed; an actor identity (changedBy) still must not be.
+        assertThat(componentNames).containsExactlyInAnyOrder("status", "note", "reasonCode");
+        assertThat(componentNames).doesNotContain("changedBy");
     }
 
     @Test
@@ -171,5 +176,142 @@ class WorkOrderServiceTest {
                 .map(java.lang.reflect.RecordComponent::getName)
                 .toList();
         assertThat(componentNames).doesNotContain("organizationId");
+    }
+    // ---- BUG-305: required resolution / cancellation evidence ----------------------------
+
+    private WorkOrder newWorkOrderInStatusNew() {
+        ServiceSite site = mock(ServiceSite.class);
+        return new WorkOrder(organizationId, "WO-TEST-1", "Title", "Description",
+                Priority.HIGH, site, null, OffsetDateTime.now().plusHours(4));
+    }
+
+    private UUID stubActorAndWorkOrder(WorkOrder workOrder) {
+        UUID id = UUID.randomUUID();
+        when(currentActorResolver.resolve()).thenReturn(new Actor(UUID.randomUUID(), "Pat Iyer", organizationId));
+        when(workOrderRepository.findOneByIdAndOrganizationId(id, organizationId)).thenReturn(Optional.of(workOrder));
+        return id;
+    }
+
+    @Test
+    void cancellingWithoutReasonCodeOrNoteReturnsBothFieldErrors() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInStatusNew());
+
+        assertThatThrownBy(() -> service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.CANCELLED, null, null), 0))
+                .isInstanceOfSatisfying(FieldValidationException.class, ex ->
+                        assertThat(ex.getErrors()).containsKeys("reasonCode", "note"));
+        verify(historyRepository, never()).save(any());
+    }
+
+    @Test
+    void whitespaceOnlyNoteIsRejected() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInStatusNew());
+        when(reasonCodeRepository.findByCategoryAndCodeAndActiveTrue(ReasonCategory.CANCELLATION, "DUPLICATE"))
+                .thenReturn(Optional.of(new ReasonCode(ReasonCategory.CANCELLATION, "DUPLICATE", "Duplicate work order", 10)));
+
+        assertThatThrownBy(() -> service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.CANCELLED, "     ", "DUPLICATE"), 0))
+                .isInstanceOfSatisfying(FieldValidationException.class, ex ->
+                        assertThat(ex.getErrors()).containsOnlyKeys("note"));
+    }
+
+    @Test
+    void unknownReasonCodeIsRejected() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInStatusNew());
+        when(reasonCodeRepository.findByCategoryAndCodeAndActiveTrue(ReasonCategory.CANCELLATION, "BOGUS"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.CANCELLED, "Raised against the wrong site", "bogus"), 0))
+                .isInstanceOfSatisfying(FieldValidationException.class, ex ->
+                        assertThat(ex.getErrors()).containsOnlyKeys("reasonCode"));
+    }
+
+    @Test
+    void validCancellationStoresReasonCodeLabelAndNoteInHistory() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInStatusNew());
+        when(reasonCodeRepository.findByCategoryAndCodeAndActiveTrue(ReasonCategory.CANCELLATION, "DUPLICATE"))
+                .thenReturn(Optional.of(new ReasonCode(ReasonCategory.CANCELLATION, "DUPLICATE", "Duplicate work order", 10)));
+
+        var response = service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.CANCELLED, "  Duplicate of WO-20261001-ABCD1234  ", "duplicate"), 0);
+
+        assertThat(response.status()).isEqualTo(WorkOrderStatus.CANCELLED);
+        ArgumentCaptor<WorkOrderStatusHistory> captor = ArgumentCaptor.forClass(WorkOrderStatusHistory.class);
+        verify(historyRepository).save(captor.capture());
+        assertThat(captor.getValue().getReasonCode()).isEqualTo("DUPLICATE");
+        assertThat(captor.getValue().getReasonLabel()).isEqualTo("Duplicate work order");
+        assertThat(captor.getValue().getNote()).isEqualTo("Duplicate of WO-20261001-ABCD1234");
+    }
+
+    @Test
+    void reasonCodeIsRejectedOnNonTerminalTransitions() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInStatusNew());
+        // NEW -> ASSIGNED passes the state machine; the stray reason code must still be refused.
+        assertThatThrownBy(() -> service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.ASSIGNED, null, "FIXED"), 0))
+                .isInstanceOf(FieldValidationException.class);
+    }
+    // ---- BUG-305: resolution path + note length ------------------------------------------
+
+    private WorkOrder newWorkOrderInProgress() {
+        WorkOrder workOrder = newWorkOrderInStatusNew();
+        workOrder.assignTo(mock(Technician.class));
+        workOrder.changeStatus(WorkOrderStatus.ASSIGNED);
+        workOrder.changeStatus(WorkOrderStatus.IN_PROGRESS);
+        return workOrder;
+    }
+
+    @Test
+    void resolvingWithoutReasonCodeOrNoteReturnsBothFieldErrors() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInProgress());
+
+        assertThatThrownBy(() -> service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.RESOLVED, "   ", null), 0))
+                .isInstanceOfSatisfying(FieldValidationException.class, ex ->
+                        assertThat(ex.getErrors()).containsKeys("reasonCode", "note"));
+        verify(historyRepository, never()).save(any());
+    }
+
+    @Test
+    void noteShorterThanMinimumLengthIsRejected() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInProgress());
+        when(reasonCodeRepository.findByCategoryAndCodeAndActiveTrue(ReasonCategory.RESOLUTION, "FIXED"))
+                .thenReturn(Optional.of(new ReasonCode(ReasonCategory.RESOLUTION, "FIXED", "Fault repaired", 10)));
+
+        assertThatThrownBy(() -> service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.RESOLVED, "done", "FIXED"), 0))
+                .isInstanceOfSatisfying(FieldValidationException.class, ex ->
+                        assertThat(ex.getErrors()).containsOnlyKeys("note"));
+    }
+
+    @Test
+    void cancellationReasonCodeCannotBeUsedToResolve() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInProgress());
+        when(reasonCodeRepository.findByCategoryAndCodeAndActiveTrue(ReasonCategory.RESOLUTION, "DUPLICATE"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.RESOLVED, "Replaced the pressure sensor", "DUPLICATE"), 0))
+                .isInstanceOfSatisfying(FieldValidationException.class, ex ->
+                        assertThat(ex.getErrors()).containsOnlyKeys("reasonCode"));
+    }
+
+    @Test
+    void validResolutionStoresReasonCodeLabelAndNoteInHistory() {
+        UUID id = stubActorAndWorkOrder(newWorkOrderInProgress());
+        when(reasonCodeRepository.findByCategoryAndCodeAndActiveTrue(ReasonCategory.RESOLUTION, "FIXED"))
+                .thenReturn(Optional.of(new ReasonCode(ReasonCategory.RESOLUTION, "FIXED", "Fault repaired", 10)));
+
+        var response = service.transition(id,
+                new StatusTransitionRequest(WorkOrderStatus.RESOLVED, "Replaced the pressure sensor and re-tested.", "fixed"), 0);
+
+        assertThat(response.status()).isEqualTo(WorkOrderStatus.RESOLVED);
+        ArgumentCaptor<WorkOrderStatusHistory> captor = ArgumentCaptor.forClass(WorkOrderStatusHistory.class);
+        verify(historyRepository).save(captor.capture());
+        assertThat(captor.getValue().getToStatus()).isEqualTo(WorkOrderStatus.RESOLVED);
+        assertThat(captor.getValue().getReasonCode()).isEqualTo("FIXED");
+        assertThat(captor.getValue().getReasonLabel()).isEqualTo("Fault repaired");
+        assertThat(captor.getValue().getNote()).isEqualTo("Replaced the pressure sensor and re-tested.");
     }
 }

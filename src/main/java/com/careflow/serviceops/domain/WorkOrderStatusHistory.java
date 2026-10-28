@@ -32,6 +32,14 @@ public class WorkOrderStatusHistory {
     @Column(name = "to_status", nullable = false, length = 30)
     private WorkOrderStatus toStatus;
 
+    // BUG-305: set only on RESOLVED / CANCELLED transitions. The label is copied at write
+    // time so the audit trail stays readable if a reason code is later renamed.
+    @Column(name = "reason_code", length = 40)
+    private String reasonCode;
+
+    @Column(name = "reason_label", length = 120)
+    private String reasonLabel;
+
     @Column(length = 500)
     private String note;
 
@@ -56,11 +64,19 @@ public class WorkOrderStatusHistory {
 
     public WorkOrderStatusHistory(WorkOrder workOrder, WorkOrderStatus fromStatus, WorkOrderStatus toStatus,
                                   String note, UUID changedByUserId, String changedByDisplayName) {
+        this(workOrder, fromStatus, toStatus, note, null, null, changedByUserId, changedByDisplayName);
+    }
+
+    public WorkOrderStatusHistory(WorkOrder workOrder, WorkOrderStatus fromStatus, WorkOrderStatus toStatus,
+                                  String note, String reasonCode, String reasonLabel,
+                                  UUID changedByUserId, String changedByDisplayName) {
         this.organizationId = workOrder.getOrganizationId();
         this.workOrder = workOrder;
         this.fromStatus = fromStatus;
         this.toStatus = toStatus;
         this.note = note;
+        this.reasonCode = reasonCode;
+        this.reasonLabel = reasonLabel;
         this.changedByUserId = changedByUserId;
         this.changedByDisplayName = changedByDisplayName;
     }
@@ -70,6 +86,8 @@ public class WorkOrderStatusHistory {
     public WorkOrderStatus getFromStatus() { return fromStatus; }
     public WorkOrderStatus getToStatus() { return toStatus; }
     public String getNote() { return note; }
+    public String getReasonCode() { return reasonCode; }
+    public String getReasonLabel() { return reasonLabel; }
     public UUID getChangedByUserId() { return changedByUserId; }
     public String getChangedByDisplayName() { return changedByDisplayName; }
     public OffsetDateTime getChangedAt() { return changedAt; }
