@@ -52,6 +52,7 @@ public class WorkOrderMapper {
     public HistoryResponse toHistoryResponse(WorkOrderStatusHistory history) {
         return new HistoryResponse(
                 history.getId(), history.getFromStatus(), history.getToStatus(), history.getNote(),
+                history.getReasonCode(), history.getReasonLabel(),
                 history.getChangedByUserId(), history.getChangedByDisplayName(), history.getChangedAt()
         );
     }

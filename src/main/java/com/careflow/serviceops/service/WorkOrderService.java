@@ -3,21 +3,24 @@ package com.careflow.serviceops.service;
 import com.careflow.serviceops.api.dto.*;
 import com.careflow.serviceops.domain.*;
 import com.careflow.serviceops.exception.BusinessRuleException;
+import com.careflow.serviceops.exception.FieldValidationException;
 import com.careflow.serviceops.exception.ResourceNotFoundException;
+import com.careflow.serviceops.exception.StaleVersionException;
+import com.careflow.serviceops.repository.*;
 import com.careflow.serviceops.security.Actor;
 import com.careflow.serviceops.security.CurrentActorResolver;
-import com.careflow.serviceops.repository.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.careflow.serviceops.exception.StaleVersionException;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -27,6 +30,7 @@ public class WorkOrderService {
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
             "createdAt", "updatedAt", "targetResolutionAt", "priority", "status", "referenceNumber"
     );
+    static final int MIN_EVIDENCE_NOTE_LENGTH = 10;
 
     private final WorkOrderRepository workOrderRepository;
     private final WorkOrderStatusHistoryRepository historyRepository;
@@ -37,6 +41,7 @@ public class WorkOrderService {
     private final WorkOrderMapper mapper;
     private final CurrentActorResolver currentActorResolver;
     private final SlaService slaService;
+    private final ReasonCodeRepository reasonCodeRepository;
 
     public WorkOrderService(WorkOrderRepository workOrderRepository,
                             WorkOrderStatusHistoryRepository historyRepository,
@@ -46,7 +51,8 @@ public class WorkOrderService {
                             StatusTransitionPolicy transitionPolicy,
                             WorkOrderMapper mapper,
                             CurrentActorResolver currentActorResolver,
-                            SlaService slaService) {
+                            SlaService slaService,
+                            ReasonCodeRepository reasonCodeRepository) {
         this.workOrderRepository = workOrderRepository;
         this.historyRepository = historyRepository;
         this.siteRepository = siteRepository;
@@ -56,6 +62,7 @@ public class WorkOrderService {
         this.mapper = mapper;
         this.currentActorResolver = currentActorResolver;
         this.slaService = slaService;
+        this.reasonCodeRepository = reasonCodeRepository;
     }
 
     @Transactional
@@ -152,13 +159,63 @@ public class WorkOrderService {
             throw new BusinessRuleException("Assign a technician before starting work.");
         }
 
+        // BUG-305: terminal transitions need a configured reason code + a meaningful note.
+        ReasonCode reason = validateTerminalEvidence(request);
+
         workOrder.changeStatus(request.status());
         historyRepository.save(new WorkOrderStatusHistory(
                 workOrder, originalStatus, request.status(), normalizedNote(request.note()),
+                reason == null ? null : reason.getCode(),
+                reason == null ? null : reason.getLabel(),
                 actor.userId(), actor.displayName()
         ));
         workOrderRepository.flush();
         return mapper.toResponse(workOrder);
+    }
+
+    /**
+     * Returns the validated reason code for RESOLVED / CANCELLED, or null for any other status.
+     * Collects every problem so the UI can show all field errors at once.
+     */
+    private ReasonCode validateTerminalEvidence(StatusTransitionRequest request) {
+        ReasonCategory category = ReasonCategory.forStatus(request.status());
+        String code = request.reasonCode() == null ? "" : request.reasonCode().trim();
+
+        if (category == null) {
+            if (!code.isEmpty()) {
+                throw new FieldValidationException(Map.of(
+                        "reasonCode", "A reason code is only accepted when resolving or cancelling."));
+            }
+            return null;
+        }
+
+        Map<String, String> errors = new LinkedHashMap<>();
+        String label = category == ReasonCategory.RESOLUTION ? "resolution" : "cancellation";
+
+        ReasonCode reason = null;
+        if (code.isEmpty()) {
+            errors.put("reasonCode", "A " + label + " reason code is required.");
+        } else {
+            reason = reasonCodeRepository
+                    .findByCategoryAndCodeAndActiveTrue(category, code.toUpperCase())
+                    .orElse(null);
+            if (reason == null) {
+                errors.put("reasonCode", "'" + code + "' is not a valid " + label + " reason code.");
+            }
+        }
+
+        String note = normalizedNote(request.note());   // trims; whitespace-only becomes null
+        if (note == null) {
+            errors.put("note", "A " + label + " note is required.");
+        } else if (note.length() < MIN_EVIDENCE_NOTE_LENGTH) {
+            errors.put("note", "The " + label + " note must be at least "
+                    + MIN_EVIDENCE_NOTE_LENGTH + " characters.");
+        }
+
+        if (!errors.isEmpty()) {
+            throw new FieldValidationException(errors);
+        }
+        return reason;
     }
 
     private void verifyVersion(WorkOrder workOrder, long expectedVersion) {
@@ -166,6 +223,7 @@ public class WorkOrderService {
             throw new StaleVersionException(expectedVersion, workOrder.getVersion());
         }
     }
+
     @Transactional(readOnly = true)
     public List<HistoryResponse> history(UUID id) {
         UUID organizationId = currentActorResolver.resolve().organizationId();

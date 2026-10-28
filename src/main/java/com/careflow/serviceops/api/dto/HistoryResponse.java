@@ -10,6 +10,8 @@ public record HistoryResponse(
         WorkOrderStatus fromStatus,
         WorkOrderStatus toStatus,
         String note,
+        String reasonCode,
+        String reasonLabel,
         UUID changedByUserId,
         String changedByDisplayName,
         OffsetDateTime changedAt

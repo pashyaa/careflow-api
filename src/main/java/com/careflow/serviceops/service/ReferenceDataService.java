@@ -9,6 +9,9 @@ import com.careflow.serviceops.repository.TechnicianRepository;
 import com.careflow.serviceops.security.CurrentActorResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.careflow.serviceops.domain.ReasonCategory;
+import com.careflow.serviceops.domain.WorkOrderStatus;
+import com.careflow.serviceops.repository.ReasonCodeRepository;
 
 import java.util.List;
 import java.util.UUID;
@@ -21,14 +24,17 @@ public class ReferenceDataService {
     private final AssetRepository assetRepository;
     private final TechnicianRepository technicianRepository;
     private final CurrentActorResolver currentActorResolver;
+    private final ReasonCodeRepository reasonCodeRepository;
 
     public ReferenceDataService(ServiceSiteRepository siteRepository, AssetRepository assetRepository,
                                 TechnicianRepository technicianRepository,
-                                CurrentActorResolver currentActorResolver) {
+                                CurrentActorResolver currentActorResolver,
+                                ReasonCodeRepository reasonCodeRepository) {
         this.siteRepository = siteRepository;
         this.assetRepository = assetRepository;
         this.technicianRepository = technicianRepository;
         this.currentActorResolver = currentActorResolver;
+        this.reasonCodeRepository = reasonCodeRepository;
     }
 
     public List<OptionResponse> sites() {
@@ -57,6 +63,16 @@ public class ReferenceDataService {
                 .map(technician -> new OptionResponse(
                         technician.getId(), technician.getEmployeeCode(), technician.getFullName(), technician.getPrimarySkill()
                 ))
+                .toList();
+    }
+    /** BUG-305: the reason codes the UI should offer for a terminal target status. */
+    public List<OptionResponse> reasonCodes(WorkOrderStatus status) {
+        ReasonCategory category = ReasonCategory.forStatus(status);
+        if (category == null) {
+            throw new IllegalArgumentException("Reason codes only apply to RESOLVED or CANCELLED.");
+        }
+        return reasonCodeRepository.findByCategoryAndActiveTrueOrderBySortOrderAsc(category).stream()
+                .map(reason -> new OptionResponse(reason.getId(), reason.getCode(), reason.getLabel(), null))
                 .toList();
     }
 }

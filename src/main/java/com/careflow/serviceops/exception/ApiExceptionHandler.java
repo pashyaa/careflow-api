@@ -49,6 +49,13 @@ public class ApiExceptionHandler {
         detail.setProperty("errors", errors);
         return detail;
     }
+    @ExceptionHandler(FieldValidationException.class)
+    ProblemDetail handleFieldValidation(FieldValidationException exception) {
+        ProblemDetail detail = problem(HttpStatus.BAD_REQUEST, "Request validation failed",
+                exception.getMessage(), "validation-error");
+        detail.setProperty("errors", exception.getErrors());
+        return detail;
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleIllegalArgument(IllegalArgumentException exception) {

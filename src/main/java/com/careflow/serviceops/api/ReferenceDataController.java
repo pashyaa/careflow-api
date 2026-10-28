@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.careflow.serviceops.domain.WorkOrderStatus;
 
 import java.util.List;
 import java.util.UUID;
@@ -32,4 +33,10 @@ public class ReferenceDataController {
     @PreAuthorize("hasAnyRole('PLANNER', 'TECHNICIAN', 'ADMIN')")
     @GetMapping("/technicians")
     public List<OptionResponse> technicians() { return service.technicians(); }
+
+    @PreAuthorize("hasAnyRole('PLANNER', 'TECHNICIAN', 'ADMIN')")
+    @GetMapping("/reason-codes")
+    public List<OptionResponse> reasonCodes(@RequestParam WorkOrderStatus status) {
+        return service.reasonCodes(status);
+    }
 }
